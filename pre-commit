@@ -1,0 +1,46 @@
+#!/bin/bash
+
+INFER_ANALYZE_OPTIONS="--bufferoverrun"
+PATH_TO_BUILD_DIR="./"
+
+# Presunuti do repozitare
+cd $PATH_TO_BUILD_DIR
+
+# Nutne provest make clean
+make clean >/dev/null
+
+# Prelozi se pouze soubory, ktere nejsou aktualni
+infer capture --reactive -- make >/dev/null 2>&1
+
+# Po fazi infer capture smazeme vytvorene soubory (zde delam make clean, jelikoz testuji pouze
+# pouze jediny soubor, u vetsich projektu by cas na znovusestaveni mohl vadit)
+make clean >/dev/null
+
+# Pouzivam pomlcky misto podtrzitek, kvuli zachovani struktury infer-out/
+git diff --name-only HEAD > infer-out/changed-files.txt 
+
+# Zrejme by bylo dobre profiltrovat vysledky pouze na .c .h .cpp atd.. soubory, aby se infer
+# nepokousel analyzovat soubory, ktere nezna
+infer analyze --bufferoverrun --reactive --changed-files-index infer-out/changed-files.txt >/dev/null 2>&1
+
+# Vytvoreni/prepsani slozky diff
+infer reportdiff --report-current infer-out/report.json --report-previous infer-out/report-prev.json
+
+# Preformatovani chyb do souboru issues.txt
+infer report --from-json-report infer-out/differential/introduced.json --issues-txt infer-out/issues.txt
+
+# Vypsani chyb, ktere byly nalezeny v kodu, ktery je pridany od posledniho commitu (zadna z chyb
+# ktera byla drive nahlasena ted nahlasena nebude)
+echo "Issues in this commit:"
+cat infer-out/issues.txt
+echo ""
+
+# Nastaveni aktualniho vysledku do vysledku starsiho, aby pristi commit mel s cim porovnavat
+mv infer-out/report.json infer-out/report-prev.json
+
+
+# Pro vytvoreni commitu bez spusteni tohoto skriptu
+#	git commit --no-verify
+#
+# Vyuzit pri inicializaci infer-out/
+
